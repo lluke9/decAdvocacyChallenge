@@ -164,9 +164,93 @@ Your report should answer these questions in a clear, concise way:
 
 1. **What does the data show?**
 
-   - Visualize all 250 data points showing productivity by shop and boss presence
+   ```{python}
+   #| echo: false
+   import pandas as pd
+   import matplotlib.pyplot as plt
+   import numpy as np
+
+   # Load data
+   carsDF = pd.read_csv("carsFixed.csv")
+
+   # Set up colors for boss presence
+   color_map = {0: "#1f77b4", 1: "#ff7f0e"}  # blue: boss absent, orange: boss present
+
+   # Separate boss absent and present clouds per shopID using clear separation
+   shop_list = sorted(carsDF['shopID'].unique())
+   spacing = 2.0    # wider separation between shop clouds
+   offset = 0.35    # offset boss absent left, boss present right
+
+   # We'll assign x_plot so that boss absent always on left, boss present always on right for each shop
+   x_plot = np.full(len(carsDF), np.nan, dtype=float)
+   curr_idx = 0
+   for shop in shop_list:
+       idx = shop_list.index(shop)
+       center = idx * spacing
+       # boss absent
+       mask0 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 0)
+       n0 = mask0.sum()
+       x_positions_boss0 = np.random.normal(center - offset, 0.10, n0)
+       x_plot[mask0] = x_positions_boss0
+       # boss present
+       mask1 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 1)
+       n1 = mask1.sum()
+       x_positions_boss1 = np.random.normal(center + offset, 0.10, n1)
+       x_plot[mask1] = x_positions_boss1
+
+   carsDF = carsDF.copy()
+   carsDF['x_plot'] = x_plot
+
+   # Assign color and edge for boss present/absent
+   carsDF['color'] = carsDF['boss'].map(color_map)
+   carsDF['edgecolor'] = np.where(carsDF['boss'] == 1, 'k', '#1f77b4')  # Use black edge for boss present
+   carsDF['alpha'] = np.where(carsDF['boss'] == 1, 0.92, 0.7)
+
+   plt.figure(figsize=(11, 6))
+   # Plot boss-absent and boss-present clouds per shop, separated
+   for boss_val in [0, 1]:
+       mask = carsDF['boss'] == boss_val
+       plt.scatter(
+           carsDF.loc[mask, 'x_plot'],
+           carsDF.loc[mask, 'carsFixed'],
+           c=carsDF.loc[mask, 'color'],
+           edgecolors=carsDF.loc[mask, 'edgecolor'],
+           alpha=carsDF.loc[mask, 'alpha'],
+           label='Boss Present' if boss_val == 1 else 'Boss Absent',
+           s=40,
+           zorder=2,
+           linewidths=0.5
+       )
+
+   # Draw vertical lines to separate shops
+   for idx in range(1, len(shop_list)):
+       plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.2, zorder=1)
+
+   plt.xlabel("Shop")
+   plt.ylabel("Cars Fixed per Day")
+   plt.title("Shop Productivity: Cars Fixed by Shop & Boss Presence")
+
+   # Set custom x-ticks per shop, at the center
+   shop_tick_positions = [i * spacing for i in range(len(shop_list))]
+   plt.xticks(shop_tick_positions, [f"Shop {shop}" for shop in shop_list])
+
+   # Custom legend
+   import matplotlib.lines as mlines
+   legend_elements = [
+       mlines.Line2D([], [], color="#1f77b4", marker='o', linestyle='None', markersize=9, label='Boss Absent'),
+       mlines.Line2D([], [], color="#ff7f0e", marker='o', markeredgecolor='k', linestyle='None', markersize=9, label='Boss Present')
+   ]
+   plt.legend(handles=legend_elements, title="Boss Present?", frameon=True)
+
+   plt.tight_layout()
+   plt.show()
+   ```
+
    - Which shops benefit most from Patrick's presence? Which don't?
 
+
+From the chart above, we can see that Shop 3 benefits the least from Patrick's presence -- likely due to his brother working there which acts as a substitute effect for Patrick's presence. 
+Shop 4 benefits the most from Patrick's presence. 
 2. **What should Patrick do?**
 
    - Clear, specific recommendations: Which shops should he prioritize? Why?
