@@ -181,18 +181,17 @@ Your report should answer these questions in a clear, concise way:
    spacing = 2.0    # wider separation between shop clouds
    offset = 0.35    # offset boss absent left, boss present right
 
-   # We'll assign x_plot so that boss absent always on left, boss present always on right for each shop
+   # Assign x_plot so boss absent always on left, boss present on right for each shop cluster
    x_plot = np.full(len(carsDF), np.nan, dtype=float)
-   curr_idx = 0
    for shop in shop_list:
        idx = shop_list.index(shop)
        center = idx * spacing
-       # boss absent
+       # boss absent cluster
        mask0 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 0)
        n0 = mask0.sum()
        x_positions_boss0 = np.random.normal(center - offset, 0.10, n0)
        x_plot[mask0] = x_positions_boss0
-       # boss present
+       # boss present cluster
        mask1 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 1)
        n1 = mask1.sum()
        x_positions_boss1 = np.random.normal(center + offset, 0.10, n1)
@@ -207,7 +206,7 @@ Your report should answer these questions in a clear, concise way:
    carsDF['alpha'] = np.where(carsDF['boss'] == 1, 0.92, 0.7)
 
    plt.figure(figsize=(11, 6))
-   # Plot boss-absent and boss-present clouds per shop, separated
+   # Plot boss-absent and boss-present clusters per shop, separated
    for boss_val in [0, 1]:
        mask = carsDF['boss'] == boss_val
        plt.scatter(
@@ -222,25 +221,89 @@ Your report should answer these questions in a clear, concise way:
            linewidths=0.5
        )
 
-   # Draw vertical lines to separate shops
+   # Draw horizontal lines for means, range bars, and value labels
+   for idx, shop in enumerate(shop_list):
+       for boss_val, color in color_map.items():
+           cluster_mask = (carsDF['shopID'] == shop) & (carsDF['boss'] == boss_val)
+           if cluster_mask.sum() == 0:
+               continue
+           mean_val = carsDF.loc[cluster_mask, 'carsFixed'].mean()
+           min_val = carsDF.loc[cluster_mask, 'carsFixed'].min()
+           max_val = carsDF.loc[cluster_mask, 'carsFixed'].max()
+           xpos = idx * spacing + (offset if boss_val == 1 else -offset)
+
+           # Range bar (vertical line from min to max)
+           plt.vlines(
+               xpos, min_val, max_val,
+               color=color,
+               alpha=0.27,
+               linewidth=7,
+               zorder=2.5
+           )
+           # Draw min/max value labels
+           plt.text(
+               xpos + 0.12, min_val,
+               f"Min: {min_val:.0f}",
+               color=color,
+               fontsize=10,
+               ha='left',
+               va='center',
+               alpha=0.65,
+               zorder=5
+           )
+           plt.text(
+               xpos + 0.12, max_val,
+               f"Max: {max_val:.0f}",
+               color=color,
+               fontsize=10,
+               ha='left',
+               va='center',
+               alpha=0.65,
+               zorder=5
+           )
+           # Horizontal line for cluster mean
+           plt.hlines(
+               mean_val,
+               xpos - 0.18, xpos + 0.18,
+               colors=color,
+               linestyles='--',
+               linewidth=2.3,
+               zorder=3
+           )
+           # Text label for mean (offset right of mean line)
+           x_text = xpos + 0.22  # offset to right of the mean line
+           plt.text(
+               x_text, mean_val,
+               f"{mean_val:.2f}",
+               color=color,
+               fontsize=12,
+               fontweight='bold',
+               ha='left',
+               va='center',
+               zorder=4
+           )
+
+   # Draw vertical dashed lines to visually split shop clusters
    for idx in range(1, len(shop_list)):
-       plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.2, zorder=1)
+       plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.23, zorder=1)
 
    plt.xlabel("Shop")
    plt.ylabel("Cars Fixed per Day")
-   plt.title("Shop Productivity: Cars Fixed by Shop & Boss Presence")
+   plt.title("Shop Productivity: Cars Fixed by Shop & Boss Presence (Clustered)")
 
    # Set custom x-ticks per shop, at the center
    shop_tick_positions = [i * spacing for i in range(len(shop_list))]
    plt.xticks(shop_tick_positions, [f"Shop {shop}" for shop in shop_list])
 
-   # Custom legend
+   # Custom legend with new range bar
    import matplotlib.lines as mlines
    legend_elements = [
        mlines.Line2D([], [], color="#1f77b4", marker='o', linestyle='None', markersize=9, label='Boss Absent'),
-       mlines.Line2D([], [], color="#ff7f0e", marker='o', markeredgecolor='k', linestyle='None', markersize=9, label='Boss Present')
+       mlines.Line2D([], [], color="#ff7f0e", marker='o', markeredgecolor='k', linestyle='None', markersize=9, label='Boss Present'),
+       mlines.Line2D([], [], color="#888888", marker='_', linestyle='--', markersize=18, label='Mean Line', alpha=0.65),
+       mlines.Line2D([], [], color="#1f77b4", linewidth=5, alpha=0.25, label='Range (Min–Max)'),
    ]
-   plt.legend(handles=legend_elements, title="Boss Present?", frameon=True)
+   plt.legend(handles=legend_elements, title="Legend", frameon=True)
 
    plt.tight_layout()
    plt.show()
@@ -248,12 +311,62 @@ Your report should answer these questions in a clear, concise way:
 
    - Which shops benefit most from Patrick's presence? Which don't?
 
+Shop 3 benefits the least from boss presence -- likely due to the boss's brother working there, acting as a substitute effect for boss presence. 
 
-From the chart above, we can see that Shop 3 benefits the least from Patrick's presence -- likely due to his brother working there which acts as a substitute effect for Patrick's presence. 
-Shop 4 benefits the most from Patrick's presence. 
 2. **What should Patrick do?**
 
    - Clear, specific recommendations: Which shops should he prioritize? Why?
+
+   ```{python}
+   import numpy as np
+   # Create columns with clearer names for the simulation below
+   carsDF['shop'] = carsDF['shopID']
+   carsDF['bossPresent'] = carsDF['boss']
+
+   # Simulate 100 days: Boss ONLY at Shop 4, using bootstrap from carsDF
+   n_days = 100
+   simulated_prod = []
+   rng = np.random.default_rng(0)  # For reproducibility
+
+   shop_list = sorted(carsDF['shop'].unique())
+
+   # Prepare samples: for each shop, get the relevant subset of carsFixed
+   samples = {}
+   for shop in shop_list:
+       if shop == 4:
+           # Boss present at Shop 4
+           mask = (carsDF['shop'] == 4) & (carsDF['bossPresent'] == 1)
+       else:
+           # Boss absent at other shops
+           mask = (carsDF['shop'] == shop) & (carsDF['bossPresent'] == 0)
+       shop_vals = carsDF.loc[mask, 'carsFixed'].values
+       samples[shop] = shop_vals
+
+   for _ in range(n_days):
+       day_prod = 0
+       for shop in shop_list:
+           shop_sample = samples[shop]
+           if len(shop_sample) == 0:
+               # If there's no data, skip (shouldn't happen in practice)
+               continue
+           # Bootstrap sample: randomly pick one with replacement
+           val = rng.choice(shop_sample)
+           day_prod += val
+       simulated_prod.append(day_prod)
+
+   # Plot line chart
+   import matplotlib.pyplot as plt
+   plt.figure(figsize=(8,3.5))
+   plt.plot(range(1, n_days+1), simulated_prod, color="#1f77b4", linewidth=2)
+   plt.title("Simulated Total Cars Fixed per Day\nIf Boss Always Visits Shop 4 (100 Days)")
+   plt.xlabel("Simulated Day")
+   plt.ylabel("Total Cars Fixed (All Shops)")
+   plt.grid(True, alpha=0.25)
+   plt.tight_layout()
+   plt.show()
+   ```
+
+   Patrick 
    - What's the potential financial impact? (Revenue or profit implications)
 
 3. **How confident can Patrick be?**
