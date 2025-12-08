@@ -10,433 +10,535 @@ execute:
 
 # 🔧 Decision Advocacy Challenge - Patrick's Auto Shop Analysis
 
-## Challenge Overview
+## The Problem 🎯
 
-**Your Mission:** Create a concise, punchy Quarto document (aim for 1-5 printed pages) that analyzes historical productivity data from Patrick's auto shop network. Your report should give Patrick clear, actionable recommendations he can understand and use. Write it so an auto-mechanic can follow it—no jargon, no confusion, no boredom. Then render the document to HTML and deploy it via GitHub Pages.
+Owner manages a network of five auto repair shops and has carefully collected data on daily productivity—including the number of cars fixed and his own presence at each location. There seems to be an effect of boss visits on shop performance.
 
-**Key Requirements:**
+**Assumptions:**
 
-- **Simplicity:** Patrick is an auto-mechanic, not a statistician. Write so he can understand.
-- **Conciseness:** 1-5 printed pages. Get to the point.
-- **Beautiful visualizations:** Show all 250 data points clearly.
-- **Logical recommendations:** Defensible advice based on the data.
-- **Confidence assessment:** Explain uncertainty in plain terms. We only have 250 days of data—that's not a lot. Help Patrick understand what ranges of differences he can expect.
+- Owner's physical presence is limited to one shop per day.
+- Each shop may react differently to boss presence.
+- Profits are closely tied to the volume of cars repaired.
+- Past performance is not indicative of future performance. 
+- Owner prefers to visit Shop 3, where his brother works
 
-## The Business Problem 🎯
 
-Patrick runs a network of 5 auto repair shops. He's been tracking productivity data (number of cars fixed per day) across all shops, along with whether he (the boss) was present at each shop on each day. 
-
-**The Core Question:** When and where should Patrick schedule his presence to maximize productivity and revenue?
-
-**Key Considerations:**
-
-- Patrick can only be at one shop per day
-- Different shops may respond differently to his presence
-- Revenue depends on number of cars fixed (assume a fixed price per car)
-- Historical patterns may not predict future performance perfectly
-- Patrick loves visiting his brother who runs Shop 3
-
-::: {.callout-important}
-## 🎯 The Key Insight: Data-Driven Decision Making
-
-**The problem:** Patrick needs to make scheduling decisions based on data, not intuition. He needs to understand:
-
-- Which shops benefit most from his presence?
-- Are there patterns by shop that suggest different strategies?
-- What are the revenue and profit implications of different scheduling scenarios?
-- How confident can he be in these recommendations?
-
-**Why this matters:** Poor scheduling decisions can lead to:
-
-- Wasted time (Patrick at shops that don't need him)
-- Lost revenue (shops that need him but don't get him)
-
-**The connection:** This is a real-world decision problem where data analysis can directly impact business outcomes. Your job is to make the data tell a clear, actionable story.
-:::
-
-## The Data 📊
-
-The dataset contains 250 observations of daily productivity across 5 shops:
+## The Data
 
 ```{python}
+#| label: cars-fixed-comparison-by-shop
 #| echo: false
-#| include: false
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
-# Load the data
+# Load data
 carsDF = pd.read_csv("carsFixed.csv")
+
+# Set up colors for boss presence
+color_map = {0: "#1f77b4", 1: "#ff7f0e"}  # blue: boss absent, orange: boss present
+
+# Separate boss absent and present clouds per shopID using clear separation
+shop_list = sorted(carsDF['shopID'].unique())
+spacing = 2.0    # wider separation between shop clouds
+offset = 0.35    # offset boss absent left, boss present right
+
+# Assign x_plot so boss absent always on left, boss present on right for each shop cluster
+x_plot = np.full(len(carsDF), np.nan, dtype=float)
+for shop in shop_list:
+    idx = shop_list.index(shop)
+    center = idx * spacing
+    # boss absent cluster
+    mask0 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 0)
+    n0 = mask0.sum()
+    x_positions_boss0 = np.random.normal(center - offset, 0.10, n0)
+    x_plot[mask0] = x_positions_boss0
+    # boss present cluster
+    mask1 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 1)
+    n1 = mask1.sum()
+    x_positions_boss1 = np.random.normal(center + offset, 0.10, n1)
+    x_plot[mask1] = x_positions_boss1
+
+carsDF = carsDF.copy()
+carsDF['x_plot'] = x_plot
+
+# Assign color and edge for boss present/absent
+carsDF['color'] = carsDF['boss'].map(color_map)
+carsDF['edgecolor'] = np.where(carsDF['boss'] == 1, 'k', '#1f77b4')  # Use black edge for boss present
+carsDF['alpha'] = np.where(carsDF['boss'] == 1, 0.92, 0.7)
+
+plt.figure(figsize=(11, 6))
+# Plot boss-absent and boss-present clusters per shop, separated
+for boss_val in [0, 1]:
+    mask = carsDF['boss'] == boss_val
+    plt.scatter(
+        carsDF.loc[mask, 'x_plot'],
+        carsDF.loc[mask, 'carsFixed'],
+        c=carsDF.loc[mask, 'color'],
+        edgecolors=carsDF.loc[mask, 'edgecolor'],
+        alpha=carsDF.loc[mask, 'alpha'],
+        label='Boss Present' if boss_val == 1 else 'Boss Absent',
+        s=40,
+        zorder=2,
+        linewidths=0.5
+    )
+
+# Draw horizontal lines for means, range bars, and value labels
+for idx, shop in enumerate(shop_list):
+    for boss_val, color in color_map.items():
+        cluster_mask = (carsDF['shopID'] == shop) & (carsDF['boss'] == boss_val)
+        if cluster_mask.sum() == 0:
+            continue
+        mean_val = carsDF.loc[cluster_mask, 'carsFixed'].mean()
+        min_val = carsDF.loc[cluster_mask, 'carsFixed'].min()
+        max_val = carsDF.loc[cluster_mask, 'carsFixed'].max()
+        xpos = idx * spacing + (offset if boss_val == 1 else -offset)
+
+        # Range bar (vertical line from min to max)
+        plt.vlines(
+            xpos, min_val, max_val,
+            color=color,
+            alpha=0.27,
+            linewidth=7,
+            zorder=2.5
+        )
+        # Draw min/max value labels
+        plt.text(
+            xpos + 0.12, min_val,
+            f"Min: {min_val:.0f}",
+            color=color,
+            fontsize=10,
+            ha='left',
+            va='center',
+            alpha=0.65,
+            zorder=5
+        )
+        plt.text(
+            xpos + 0.12, max_val,
+            f"Max: {max_val:.0f}",
+            color=color,
+            fontsize=10,
+            ha='left',
+            va='center',
+            alpha=0.65,
+            zorder=5
+        )
+        # Horizontal line for cluster mean
+        plt.hlines(
+            mean_val,
+            xpos - 0.18, xpos + 0.18,
+            colors=color,
+            linestyles='--',
+            linewidth=2.3,
+            zorder=3
+        )
+        # Text label for mean (offset right of mean line)
+        x_text = xpos + 0.22  # offset to right of the mean line
+        plt.text(
+            x_text, mean_val,
+            f"{mean_val:.2f}",
+            color=color,
+            fontsize=12,
+            fontweight='bold',
+            ha='left',
+            va='center',
+            zorder=4
+        )
+
+# Draw vertical dashed lines to visually split shop clusters
+for idx in range(1, len(shop_list)):
+    plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.23, zorder=1)
+
+plt.xlabel("Shop")
+plt.ylabel("Cars Fixed per Day")
+plt.title("Shop Productivity: Cars Fixed by Shop & Boss Presence (Clustered)")
+
+# Set custom x-ticks per shop, at the center
+shop_tick_positions = [i * spacing for i in range(len(shop_list))]
+plt.xticks(shop_tick_positions, [f"Shop {shop}" for shop in shop_list])
+
+# Custom legend with new range bar
+import matplotlib.lines as mlines
+legend_elements = [
+    mlines.Line2D([], [], color="#1f77b4", marker='o', linestyle='None', markersize=9, label='Boss Absent'),
+    mlines.Line2D([], [], color="#ff7f0e", marker='o', markeredgecolor='k', linestyle='None', markersize=9, label='Boss Present'),
+    mlines.Line2D([], [], color="#888888", marker='_', linestyle='--', markersize=18, label='Mean Line', alpha=0.65),
+    mlines.Line2D([], [], color="#1f77b4", linewidth=5, alpha=0.25, label='Range (Min–Max)'),
+]
+plt.legend(handles=legend_elements, title="Legend", frameon=True)
+
+plt.tight_layout()
+plt.show()
 ```
+
+
+Shop 3 benefits the least from boss presence -- likely due to the boss's brother working there, acting as a substitute effect for boss presence. At a glance, Shop 4 seems to benefit the most. 
+
+## Analysis & Recommendations
+
+The below is a simulation of possible number of cars fixed in a month. A little clarification on the first two strategies:
+
+**2/3/4 strategy:**
+
+- 2 days of the week: visit Shop 2
+- 1 day of the week: visit Shop 3
+- 4 days of the week: visit Shop 4
+- Repeat.
+
+**2/4 strategy**
+
+- 3 days of the week: visit Shop 2
+- 4 days of the week: visit Shop 4
+- Repeat.
 
 ```{python}
-#| label: tbl-data-overview
-#| tbl-cap: "Overview of the productivity data"
-#| echo: true
-carsDF.head(10)
+#| label: simulation-of-30-days
+#| echo: false
+
+# Simulation: Compare final totals across multiple boss scheduling strategies (30 days, 500 simulations)
+   
+import numpy as np
+import matplotlib.pyplot as plt
+   
+carsDF['shop'] = carsDF['shopID']
+carsDF['bossPresent'] = carsDF['boss']
+
+n_days = 30  # 30 days per simulation run
+n_sims = 500  # 500 simulations
+rng = np.random.default_rng(345)
+shop_list = sorted(carsDF['shop'].unique())
+
+# Precompute samples for each (shop, bossPresent) setting
+samples = {}
+for shop in shop_list:
+    samples[shop] = {
+        0: carsDF[(carsDF['shop'] == shop) & (carsDF['bossPresent'] == 0)]['carsFixed'].values,
+        1: carsDF[(carsDF['shop'] == shop) & (carsDF['bossPresent'] == 1)]['carsFixed'].values
+    }
+
+# --- SCHEDULING PLANS ---
+
+# 1. Control: Boss visits NO shops (i.e., "boss present" nowhere)
+control_none_plan = [0] * n_days  # 0 means boss is not present at any shop, handled below
+
+# 2. Rotate shops evenly: Boss rotates through each shop in order
+rotate_evenly_plan = [shop_list[i % len(shop_list)] for i in range(n_days)]
+
+# 3. Always Shop 4: Boss always at shop 4
+shop4_plan = [4] * n_days
+
+# 4. Always Shop 3: Boss always at shop 3
+shop3_plan = [3] * n_days
+
+# 5. Shop2/4 split: 3 days at 2, 4 days at 4 each week
+s2_s4_week = [2]*3 + [4]*4
+shop2_4_split_plan = [s2_s4_week[i % 7] for i in range(n_days)]
+
+# 6. Shop 2/3/4 split: 1 day at 2, 1 day at 3, 4 days at 4 per week
+s2_3_4_week = [2, 3] + [4]*4 + [2]  # need to fill 7 days: but 1@2, 1@3, 4@4, so: [2,3,4,4,4,4, ...]
+# But that's 6 days, so let's spread 1@2, 1@3, 4@4 in 7 days: [2,3,4,4,4,4,0] for 7-day cycles
+s2_3_4_week = [2, 3] + [4]*4 + [0]  # pad with [0] to make a week of 7 days (one day no boss)
+shop2_3_4_split_plan = [s2_3_4_week[i % 7] for i in range(n_days)]
+
+plans = {
+    "No visits": control_none_plan,
+    "Rotate shops evenly": rotate_evenly_plan,
+    "Always Shop 4": shop4_plan,
+    "Always Shop 3": shop3_plan,
+    "Shop2/4 split": shop2_4_split_plan,
+    "Shop2/3/4 split": shop2_3_4_split_plan
+}
+
+def simulate_totals(boss_on_day, n_days=30, n_sims=500, rng=None):
+    """
+    Simulate total cars fixed for n_sims runs of n_days each.
+    Each day: sample every shop using either boss-present or boss-absent distribution
+    depending on boss location (if 0, boss visits no one).
+    """
+    all_totals = []
+    for run in range(n_sims):
+        daily_totals = []
+        for d in range(n_days):
+            boss_here = boss_on_day[d]
+            day_prod = 0
+            for shop in shop_list:
+                if boss_here == 0:
+                    boss_present = 0  # boss visits no shop
+                else:
+                    boss_present = 1 if shop == boss_here else 0
+                pool = samples[shop][boss_present]
+                if len(pool) == 0:
+                    val = 0
+                else:
+                    val = rng.choice(pool)
+                day_prod += val
+            daily_totals.append(day_prod)
+        final_total = np.sum(daily_totals)
+        all_totals.append(final_total)
+    return np.array(all_totals)
+
+# Run simulation for all strategies
+results_final = {}
+for strat, sched in plans.items():
+    results_final[strat] = simulate_totals(sched, n_days=n_days, n_sims=n_sims, rng=rng)
+
+# Color map for new strategies
+color_map = {
+    "No visits": "#bbbbbb",
+    "Rotate shops evenly": "#1f77b4",
+    "Always Shop 4": "#d62728",
+    "Always Shop 3": "#9467bd",
+    "Shop2/4 split": "#2ca02c",
+    "Shop2/3/4 split": "#ff9900"
+}
+strategies = list(results_final.keys())
+
+# Plot final totals as jittered cloud/dot plot with min and max range labels
+plt.figure(figsize=(11.2, 6))
+for i, strat in enumerate(strategies):
+    y = np.full_like(results_final[strat], i, dtype=float)
+    jitter = rng.normal(0, 0.10, size=n_sims)
+    plt.scatter(results_final[strat], y + jitter,
+                color=color_map[strat], alpha=0.30, s=30, edgecolor='k', linewidth=0.4, label=strat)
+    # Show mean and std
+    mean = results_final[strat].mean()
+    std = results_final[strat].std()
+    minval = results_final[strat].min()
+    maxval = results_final[strat].max()
+    plt.plot([mean], [i], color=color_map[strat], marker='D', markersize=11, markeredgecolor='black', label=None if i != 0 else "Mean", zorder=10)
+    plt.hlines(i, mean-std, mean+std, color=color_map[strat], linewidth=6, alpha=0.35, zorder=8)
+    # Add min/max labels at each line's edge
+    plt.text(minval-6, i-0.08, f"min: {minval:.0f}", va='center', ha='right', fontsize=9, color="#444")
+    plt.text(maxval+6, i-0.08, f"max: {maxval:.0f}", va='center', ha='left', fontsize=9, color="#444")
+    # Add mean ± std
+    plt.text(mean+std+2, i+0.03, f"{mean:.0f}±{std:.0f}", va='center', fontsize=10, alpha=0.7)
+
+plt.yticks(range(len(strategies)), strategies)
+plt.xlabel("Total Cars Fixed Over 30 Simulated Days")
+plt.ylabel("Boss Scheduling Strategy")
+plt.title("Total cars fixed in 30 days")
+plt.grid(axis='x', alpha=0.19)
+plt.tight_layout()
+plt.show()
+
 ```
 
-**Data Dictionary:**
 
-- `observation`: Observation number (1-250)
-- `shopID`: Shop identifier (1-5)
-- `boss`: Binary indicator (0 = boss absent, 1 = boss present)
-- `carsFixed`: Number of cars fixed that day
+The 2/3/4 strategy adds about 300 extra cars vs. not visiting any shop:
+
+- 4200 - 4600 cars fixed without visits
+- 4500 - 4900 cars fixed with the 2/3/4 schedule
+
+By cutting out shop 3 entirely and following the 2/4 schedule, this gives you an extra 50-100 cars fixed each month. 
+
+The strategy with the highest upside is to purely focus on Shop 4:
+
+- 4600 - 5000 cars fixed with the Shop 4 strategy 
+
+
+## Confidence
+
+Although focusing on Shop 4 seems like a strong strategy, we're not so sure. We only have 5 visits, and they vary widely -- from 39 to 64 cars fixed per day. 
+
+Below, we try to give an estimate of what the real "boss effect" could be. Because **Shop 4** varies so much, there's a small chance that the true improvement could even be less than 3! 
+
+Something interesting for **Shop 3** -- there might not be an effect at all, or even a negative effect. Though it's most likely there's at least some positive effect of around 3 additional cars fixed per day. 
+
+On the other hand, with **Shop 2** we can be pretty certain that the effect is between 7-13 cars fixed per day. 
 
 ```{python}
-#| label: tbl-data-summary
-#| tbl-cap: "Summary statistics by shop and boss presence"
-#| echo: true
-summary = carsDF.groupby(['shopID', 'boss'])['carsFixed'].agg(['count', 'mean', 'std', 'min', 'max']).round(2)
-summary
-```
+#| label: boss-visit-uncertainty-subsampling
+#| echo: false
+
+# Visualize uncertainty using random subsampling (without replacement)
+# "What if we had collected different subsets of the data we actually have?"
+
+# METHOD: Random Subsampling (without replacement)
+# - Take random subsets of the observed data (without replacement)
+# - Calculate difference in means for each subset
+# - Shows: "We could have easily seen these different subsets"
+# - No distributional assumptions - purely data-driven
+# - More conservative than bootstrap: only shows what we could have observed
 
-## Challenge Requirements 📋
-
-### Minimum Requirements for Any Points on Challenge
-
-1. **Create a Quarto Document:** Write a comprehensive quarto markdown file structured as a professional business report. Your final rendered HTML should be a polished, client-ready document that Patrick can use to make decisions. **Important:** Your final rendered HTML should contain only your analysis and recommendations—all challenge instructions, setup guides, and grading rubrics should be removed from the final report.
-
-2. **Render to HTML:** You must render the quarto markdown file to HTML.
-
-3. **GitHub Repository:** Create a repository named `decAdvocacyChallenge` in your GitHub account. Upload your rendered HTML files to this repository.
-
-4. **GitHub Pages Setup:** The repository should be made the source of your GitHub Pages:
-   - Go to your repository settings (click the "Settings" tab in your GitHub repository)
-   - Scroll down to the "Pages" section in the left sidebar
-   - Under "Source", select "Deploy from a branch"
-   - Choose "main" branch and "/ (root)" folder
-   - Click "Save"
-   - Your site will be available at: `https://[your-username].github.io/decAdvocacyChallenge/`
-   - **Note:** It may take a few minutes for the site to become available after enabling Pages
-
-## Getting Started: Repository Setup 🚀
-
-::: {.callout-important}
-## 📁 Quick Start
-
-**Step 1:** Create a new repository named `decAdvocacyChallenge` in your GitHub account by forking the starter repository at [https://github.com/flyaflya/decAdvocacyChallenge.git](https://github.com/flyaflya/decAdvocacyChallenge.git)
-
-**Step 2:** Clone the repository locally using Cursor (or VS Code)
-
-**Step 3:** The data file `carsFixed.csv` is already included in this repository. The code will load it from the local file.
-
-**Step 4:** You're ready to start! Modify this `index.qmd` file and begin your analysis.
-:::
-
-::: {.callout-tip}
-## 💡 Why This Approach?
-
-**Benefits:**
-
-- **Real-world application:** You're solving an actual business problem
-- **Data-driven insights:** Learn to extract actionable insights from data
-- **Professional presentation:** Create a report that a real client would use
-- **Visual storytelling:** Master the art of data visualization for decision-making
-:::
-
-## Grading Rubric 🎓
-
-::: {.callout-important}
-## 📊 What You're Really Being Graded On
-
-**This is a report for Patrick, an auto-mechanic, not a statistics professor.** Your job is to give him clear, actionable advice he can understand and use. Think of this as a brief consultation report—something he can read in 5 minutes and immediately know what to do.
-
-**Report Format:**
-
-- **Conciseness:** Aim for 1-5 printed pages. Patrick is busy—get to the point quickly.
-- **Simplicity:** Write so an auto-mechanic can understand. Avoid jargon. Use plain language.
-- **Delete All Challenge Instructions:** Once you've completed your analysis, remove all challenge instructions, setup guides, and grading rubrics from your final rendered HTML. The final report should contain only your analysis, visualizations, and recommendations—nothing else.
-- **Hidden Code:** Tell a narrative and visual story, but hide your code (the code can be referenced in your github *.qmd source file if needed).
-- **Show All Data Points:** When plotting historical data, display all 250 observations (not just summaries). Use transparency, jitter, or other techniques to handle overlapping points.
-
-**What makes a great report:**
-
-- **Beautiful visualizations:** Clean, clear charts that tell the story at a glance
-- **Logical recommendations:** Defensible advice based on the data, not speculation
-- **Confidence assessment:** Explain uncertainty in plain terms. What ranges of differences can Patrick expect? How confident can he be? (Remember: we only have 250 days of data—that's not a lot.)
-- **Punchy and focused:** Don't bore Patrick with unnecessary analysis. Focus on what matters for his decision.
-
-**What we're looking for:** A report Patrick can read, understand, and act on. If he's confused or bored, you've missed the mark.
-:::
-
-### What Your Report Should Include
-
-Your report should answer these questions in a clear, concise way:
-
-1. **What does the data show?**
-
-   ```{python}
-   #| echo: false
-   import pandas as pd
-   import matplotlib.pyplot as plt
-   import numpy as np
-
-   # Load data
-   carsDF = pd.read_csv("carsFixed.csv")
-
-   # Set up colors for boss presence
-   color_map = {0: "#1f77b4", 1: "#ff7f0e"}  # blue: boss absent, orange: boss present
-
-   # Separate boss absent and present clouds per shopID using clear separation
-   shop_list = sorted(carsDF['shopID'].unique())
-   spacing = 2.0    # wider separation between shop clouds
-   offset = 0.35    # offset boss absent left, boss present right
-
-   # Assign x_plot so boss absent always on left, boss present on right for each shop cluster
-   x_plot = np.full(len(carsDF), np.nan, dtype=float)
-   for shop in shop_list:
-       idx = shop_list.index(shop)
-       center = idx * spacing
-       # boss absent cluster
-       mask0 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 0)
-       n0 = mask0.sum()
-       x_positions_boss0 = np.random.normal(center - offset, 0.10, n0)
-       x_plot[mask0] = x_positions_boss0
-       # boss present cluster
-       mask1 = (carsDF['shopID'] == shop) & (carsDF['boss'] == 1)
-       n1 = mask1.sum()
-       x_positions_boss1 = np.random.normal(center + offset, 0.10, n1)
-       x_plot[mask1] = x_positions_boss1
-
-   carsDF = carsDF.copy()
-   carsDF['x_plot'] = x_plot
-
-   # Assign color and edge for boss present/absent
-   carsDF['color'] = carsDF['boss'].map(color_map)
-   carsDF['edgecolor'] = np.where(carsDF['boss'] == 1, 'k', '#1f77b4')  # Use black edge for boss present
-   carsDF['alpha'] = np.where(carsDF['boss'] == 1, 0.92, 0.7)
-
-   plt.figure(figsize=(11, 6))
-   # Plot boss-absent and boss-present clusters per shop, separated
-   for boss_val in [0, 1]:
-       mask = carsDF['boss'] == boss_val
-       plt.scatter(
-           carsDF.loc[mask, 'x_plot'],
-           carsDF.loc[mask, 'carsFixed'],
-           c=carsDF.loc[mask, 'color'],
-           edgecolors=carsDF.loc[mask, 'edgecolor'],
-           alpha=carsDF.loc[mask, 'alpha'],
-           label='Boss Present' if boss_val == 1 else 'Boss Absent',
-           s=40,
-           zorder=2,
-           linewidths=0.5
-       )
-
-   # Draw horizontal lines for means, range bars, and value labels
-   for idx, shop in enumerate(shop_list):
-       for boss_val, color in color_map.items():
-           cluster_mask = (carsDF['shopID'] == shop) & (carsDF['boss'] == boss_val)
-           if cluster_mask.sum() == 0:
-               continue
-           mean_val = carsDF.loc[cluster_mask, 'carsFixed'].mean()
-           min_val = carsDF.loc[cluster_mask, 'carsFixed'].min()
-           max_val = carsDF.loc[cluster_mask, 'carsFixed'].max()
-           xpos = idx * spacing + (offset if boss_val == 1 else -offset)
-
-           # Range bar (vertical line from min to max)
-           plt.vlines(
-               xpos, min_val, max_val,
-               color=color,
-               alpha=0.27,
-               linewidth=7,
-               zorder=2.5
-           )
-           # Draw min/max value labels
-           plt.text(
-               xpos + 0.12, min_val,
-               f"Min: {min_val:.0f}",
-               color=color,
-               fontsize=10,
-               ha='left',
-               va='center',
-               alpha=0.65,
-               zorder=5
-           )
-           plt.text(
-               xpos + 0.12, max_val,
-               f"Max: {max_val:.0f}",
-               color=color,
-               fontsize=10,
-               ha='left',
-               va='center',
-               alpha=0.65,
-               zorder=5
-           )
-           # Horizontal line for cluster mean
-           plt.hlines(
-               mean_val,
-               xpos - 0.18, xpos + 0.18,
-               colors=color,
-               linestyles='--',
-               linewidth=2.3,
-               zorder=3
-           )
-           # Text label for mean (offset right of mean line)
-           x_text = xpos + 0.22  # offset to right of the mean line
-           plt.text(
-               x_text, mean_val,
-               f"{mean_val:.2f}",
-               color=color,
-               fontsize=12,
-               fontweight='bold',
-               ha='left',
-               va='center',
-               zorder=4
-           )
-
-   # Draw vertical dashed lines to visually split shop clusters
-   for idx in range(1, len(shop_list)):
-       plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.23, zorder=1)
-
-   plt.xlabel("Shop")
-   plt.ylabel("Cars Fixed per Day")
-   plt.title("Shop Productivity: Cars Fixed by Shop & Boss Presence (Clustered)")
-
-   # Set custom x-ticks per shop, at the center
-   shop_tick_positions = [i * spacing for i in range(len(shop_list))]
-   plt.xticks(shop_tick_positions, [f"Shop {shop}" for shop in shop_list])
-
-   # Custom legend with new range bar
-   import matplotlib.lines as mlines
-   legend_elements = [
-       mlines.Line2D([], [], color="#1f77b4", marker='o', linestyle='None', markersize=9, label='Boss Absent'),
-       mlines.Line2D([], [], color="#ff7f0e", marker='o', markeredgecolor='k', linestyle='None', markersize=9, label='Boss Present'),
-       mlines.Line2D([], [], color="#888888", marker='_', linestyle='--', markersize=18, label='Mean Line', alpha=0.65),
-       mlines.Line2D([], [], color="#1f77b4", linewidth=5, alpha=0.25, label='Range (Min–Max)'),
-   ]
-   plt.legend(handles=legend_elements, title="Legend", frameon=True)
-
-   plt.tight_layout()
-   plt.show()
-   ```
-
-   - Which shops benefit most from Patrick's presence? Which don't?
-
-Shop 3 benefits the least from boss presence -- likely due to the boss's brother working there, acting as a substitute effect for boss presence. 
-
-2. **What should Patrick do?**
-
-   - Clear, specific recommendations: Which shops should he prioritize? Why?
-
-   ```{python}
-   import numpy as np
-   # Create columns with clearer names for the simulation below
-   carsDF['shop'] = carsDF['shopID']
-   carsDF['bossPresent'] = carsDF['boss']
-
-   # Simulate 100 days: Boss ONLY at Shop 4, using bootstrap from carsDF
-   n_days = 100
-   simulated_prod = []
-   rng = np.random.default_rng(0)  # For reproducibility
-
-   shop_list = sorted(carsDF['shop'].unique())
-
-   # Prepare samples: for each shop, get the relevant subset of carsFixed
-   samples = {}
-   for shop in shop_list:
-       if shop == 4:
-           # Boss present at Shop 4
-           mask = (carsDF['shop'] == 4) & (carsDF['bossPresent'] == 1)
-       else:
-           # Boss absent at other shops
-           mask = (carsDF['shop'] == shop) & (carsDF['bossPresent'] == 0)
-       shop_vals = carsDF.loc[mask, 'carsFixed'].values
-       samples[shop] = shop_vals
-
-   for _ in range(n_days):
-       day_prod = 0
-       for shop in shop_list:
-           shop_sample = samples[shop]
-           if len(shop_sample) == 0:
-               # If there's no data, skip (shouldn't happen in practice)
-               continue
-           # Bootstrap sample: randomly pick one with replacement
-           val = rng.choice(shop_sample)
-           day_prod += val
-       simulated_prod.append(day_prod)
-
-   # Plot line chart
-   import matplotlib.pyplot as plt
-   plt.figure(figsize=(8,3.5))
-   plt.plot(range(1, n_days+1), simulated_prod, color="#1f77b4", linewidth=2)
-   plt.title("Simulated Total Cars Fixed per Day\nIf Boss Always Visits Shop 4 (100 Days)")
-   plt.xlabel("Simulated Day")
-   plt.ylabel("Total Cars Fixed (All Shops)")
-   plt.grid(True, alpha=0.25)
-   plt.tight_layout()
-   plt.show()
-   ```
-
-   Patrick 
-   - What's the potential financial impact? (Revenue or profit implications)
-
-3. **How confident can Patrick be?**
-
-   - Explain uncertainty in plain terms an auto-mechanic can understand
-   - What ranges of differences can he expect? (We only have 250 days—that's not a huge sample)
-   - What could go wrong? What assumptions are you making?
-
-4. **What does the future look like?**
-
-   - Show at least one visualization of projected outcomes under different scheduling scenarios
-   - Help Patrick see the potential impact of following your recommendations
-
-**Remember:** Less is more. A focused, punchy report that Patrick can understand and act on is better than a long, complex analysis that confuses him.
-
-## Technical Implementation Preferences 💡
-
-### Setting Up Your Analysis
-
-- Use `pandas` for data manipulation
-- Use `matplotlib` and `seaborn` for visualizations
-- Use `numpy` for numerical calculations if needed
-- Consider using `scipy` for statistical tests if helpful
-
-### Visualization Preferences
-
-- **Professional Styling:** Use consistent colors, clear labels, readable fonts, and informative titles
-- **Show All Points:** When displaying historical data, ensure all 250 observations are visible (use transparency, jitter, or other techniques)
-- **Color Coding:** Use consistent color schemes (e.g., one color for boss present, another for boss absent)
-- **Interactive Elements:** Consider using plotly for interactive visualizations if helpful (optional)
-
-### Data Loading
-
-The data file `carsFixed.csv` is included in your repository. Load it using pandas:
-
-```python
 import pandas as pd
-carsDF = pd.read_csv("carsFixed.csv")
+import numpy as np
+import matplotlib.pyplot as plt
+
+# For reproducibility
+rng = np.random.default_rng(345)
+
+shop_list = sorted(carsDF['shopID'].unique())
+n_subsamples = 200  # Number of random subsets to try
+subsample_differences = {}
+
+for shop in shop_list:
+    boss_present_data = carsDF[(carsDF["shopID"] == shop) & (carsDF["boss"] == 1)]["carsFixed"].values
+    boss_absent_data = carsDF[(carsDF["shopID"] == shop) & (carsDF["boss"] == 0)]["carsFixed"].values
+    
+    if len(boss_present_data) == 0 or len(boss_absent_data) == 0:
+        subsample_differences[shop] = np.array([])
+    else:
+        differences = []
+        
+        # Take random subsets without replacement
+        # Use a fraction of the data to show "what if we had collected less data?"
+        # This shows the uncertainty from having limited sample sizes
+        
+        for _ in range(n_subsamples):
+            # Use 70-90% of the data randomly to show variability
+            # Shops with fewer data points will show more variability
+            frac = rng.uniform(0.5, 1.0)
+            
+            # Calculate subset sizes (at least 2 points, at most full size)
+            n_present_sub = max(2, int(len(boss_present_data) * frac))
+            n_absent_sub = max(2, int(len(boss_absent_data) * frac))
+            
+            # Make sure we don't try to take more than we have
+            n_present_sub = min(n_present_sub, len(boss_present_data))
+            n_absent_sub = min(n_absent_sub, len(boss_absent_data))
+            
+            # Randomly select indices without replacement
+            present_indices = rng.choice(len(boss_present_data), size=n_present_sub, replace=False)
+            absent_indices = rng.choice(len(boss_absent_data), size=n_absent_sub, replace=False)
+            
+            # Calculate difference in means for this subset
+            present_subset = boss_present_data[present_indices]
+            absent_subset = boss_absent_data[absent_indices]
+            
+            diff = np.mean(present_subset) - np.mean(absent_subset)
+            differences.append(diff)
+        
+        subsample_differences[shop] = np.array(differences)
+
+# Set up color for uncertainty clouds
+color_uncertainty = "#2980b9"  # blue color for uncertainty cloud
+
+# Separate uncertainty clouds per shopID using clear separation
+spacing = 2.0    # wider separation between shop clouds
+offset = 0.0     # centered for each shop
+
+# Assign x_plot positions for each shop cluster
+sim_data = []
+for shop in shop_list:
+    idx = shop_list.index(shop)
+    center = idx * spacing
+    n = len(subsample_differences[shop])
+    x_positions = rng.normal(center + offset, 0.10, n)
+    for i, sim_diff in enumerate(subsample_differences[shop]):
+        sim_data.append({'shopID': shop, 'difference': sim_diff, 'x_plot': x_positions[i]})
+
+simDF = pd.DataFrame(sim_data)
+
+# Assign color and edge
+simDF['color'] = color_uncertainty
+simDF['edgecolor'] = color_uncertainty
+simDF['alpha'] = 0.7
+
+plt.figure(figsize=(11, 6))
+# Plot uncertainty cloud per shop
+plt.scatter(
+    simDF['x_plot'],
+    simDF['difference'],
+    c=simDF['color'],
+    edgecolors=simDF['edgecolor'],
+    alpha=simDF['alpha'],
+    s=40,
+    zorder=2,
+    linewidths=0.5
+)
+
+# Draw horizontal lines for means, range bars, and value labels
+for idx, shop in enumerate(shop_list):
+    cluster_mask = (simDF['shopID'] == shop)
+    if cluster_mask.sum() == 0:
+        continue
+    mean_val = simDF.loc[cluster_mask, 'difference'].mean()
+    min_val = simDF.loc[cluster_mask, 'difference'].min()
+    max_val = simDF.loc[cluster_mask, 'difference'].max()
+    xpos = idx * spacing + offset
+
+    # Range bar (vertical line from min to max)
+    plt.vlines(
+        xpos, min_val, max_val,
+        color=color_uncertainty,
+        alpha=0.27,
+        linewidth=7,
+        zorder=2.5
+    )
+    # Draw min/max value labels
+    plt.text(
+        xpos + 0.12, min_val,
+        f"Min: {min_val:.1f}",
+        color=color_uncertainty,
+        fontsize=10,
+        ha='left',
+        va='center',
+        alpha=0.65,
+        zorder=5
+    )
+    plt.text(
+        xpos + 0.12, max_val,
+        f"Max: {max_val:.1f}",
+        color=color_uncertainty,
+        fontsize=10,
+        ha='left',
+        va='center',
+        alpha=0.65,
+        zorder=5
+    )
+    # Horizontal line for cluster mean
+    plt.hlines(
+        mean_val,
+        xpos - 0.18, xpos + 0.18,
+        colors=color_uncertainty,
+        linestyles='--',
+        linewidth=2.3,
+        zorder=3
+    )
+    # Text label for mean (offset right of mean line)
+    x_text = xpos + 0.22  # offset to right of the mean line
+    plt.text(
+        x_text, mean_val,
+        f"{mean_val:.2f}",
+        color=color_uncertainty,
+        fontsize=12,
+        fontweight='bold',
+        ha='left',
+        va='center',
+        zorder=4
+    )
+
+# Draw vertical dashed lines to visually split shop clusters
+for idx in range(1, len(shop_list)):
+    plt.axvline(x=(idx * spacing - spacing/2), color='grey', linestyle='--', alpha=0.23, zorder=1)
+
+# Draw horizontal reference line at y=0 (no difference)
+plt.axhline(0, color='gray', linewidth=1.1, linestyle='--', alpha=0.52, zorder=1)
+
+plt.xlabel("Shop")
+plt.ylabel("Difference in Cars Fixed (Boss Present - Boss Absent)")
+plt.title("What's the real effect of boss present vs absent?'")
+
+# Set custom x-ticks per shop, at the center
+shop_tick_positions = [i * spacing for i in range(len(shop_list))]
+plt.xticks(shop_tick_positions, [f"Shop {shop}" for shop in shop_list])
+
+# Custom legend
+import matplotlib.lines as mlines
+legend_elements = [
+    mlines.Line2D([], [], color=color_uncertainty, marker='o', linestyle='None', markersize=9, label='Subsample Differences'),
+    mlines.Line2D([], [], color="#888888", marker='_', linestyle='--', markersize=18, label='Mean Line', alpha=0.65),
+    mlines.Line2D([], [], color=color_uncertainty, linewidth=5, alpha=0.25, label='Range (Min–Max)'),
+]
+plt.legend(handles=legend_elements, title="Legend", frameon=True)
+
+plt.tight_layout()
+plt.show()
+
 ```
 
-## Submission Checklist ✅
 
-**Technical Requirements:**
+## Conclusion
+We're making some assumptions here that the data is representative of what a typical day would look like. But as we visit Shop 4 more, for instance, it might turn out that those 5 boss-days were a fluke, and that maybe the effect is not as strong as we expected. 
 
-- [ ] Forked repository `decAdvocacyChallenge` from the starter repository
-- [ ] Cloned repository locally using Cursor (or VS Code)
-- [ ] Quarto document created with clear narrative (use this `index.qmd` as a starting point)
-- [ ] Document rendered to HTML successfully
-- [ ] HTML files uploaded to your repository
-- [ ] GitHub Pages enabled and working
-- [ ] Site accessible at `https://[your-username].github.io/decAdvocacyChallenge/`
-
-**Report Quality Requirements:**
-
-- [ ] **Conciseness:** Report is 1-5 printed pages (not a novel)
-- [ ] **Simplicity:** Written so an auto-mechanic can understand (no unnecessary jargon)
-- [ ] **Beautiful visualizations:** Clean, clear charts that tell the story with persuasive titles, meaningful labels, and useful annotations.
-- [ ] **All 250 data points visible:** Historical data shows all observations, not just summaries (on one of the visualizations)
-- [ ] **Logical recommendations:** Defensible advice based on the data
-- [ ] **Confidence assessment:** Uncertainty explained in plain terms Patrick can understand
-- [ ] **Future scenarios:** At least one visualization showing projected outcomes
-- [ ] **Clean final report:** All challenge instructions, setup guides, and grading rubrics removed from final HTML
-- [ ] **Hidden code:** Code is hidden in final report (must be in source .qmd file)
-
-### Resources
-
-- **Quarto Markdown:** [quarto.org/docs/authoring/markdown-basics.html](https://quarto.org/docs/authoring/markdown-basics.html)
-- **Quarto Documentation:** [quarto.org/docs](https://quarto.org/docs)
-- **Python Data Science Handbook:** [jakevdp.github.io/PythonDataScienceHandbook](https://jakevdp.github.io/PythonDataScienceHandbook)
-- **Pandas Documentation:** [pandas.pydata.org/docs](https://pandas.pydata.org/docs)
-- **Matplotlib Gallery:** [matplotlib.org/stable/gallery](https://matplotlib.org/stable/gallery)
-- **Seaborn Tutorial:** [seaborn.pydata.org/tutorial.html](https://seaborn.pydata.org/tutorial.html)
-
+This is why we suggest the **2/3/4 schedule**, balancing it out by visiting Shop 2, which shows consistently good improvement, and visiting Shop 4, which has high potential returns for improvement. Adding in Shop 3 one day a week to visit your brother is optional, depending on how much you'd like to sacrifice in potential car fixes -- by the numbers it's an opportunity cost of at least 7 additional car fixes/day. 
